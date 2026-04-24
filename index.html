@@ -75,8 +75,8 @@ details.multi.inline-cell[open] summary{box-shadow:none}
 details.multi.inline-cell[open] summary::after{content:"▲";color:var(--accent)}
 details.multi.inline-cell .multi-body{left:auto;right:0;min-width:240px}
 details.multi.inline-cell .multi-body label{white-space:nowrap}
-.gc-ing-input{width:140px;text-align:right;padding:4px 8px;border:1px solid var(--neutral-1);border-radius:4px;font:inherit;font-variant-numeric:tabular-nums;background:#fff}
-.gc-ing-input:focus{border-color:var(--primary);outline:none;box-shadow:0 0 0 2px rgba(82,109,127,.15)}
+.gc-ing-input,.gc-imp-input{width:140px;text-align:right;padding:4px 8px;border:1px solid var(--neutral-1);border-radius:4px;font:inherit;font-variant-numeric:tabular-nums;background:#fff}
+.gc-ing-input:focus,.gc-imp-input:focus{border-color:var(--primary);outline:none;box-shadow:0 0 0 2px rgba(82,109,127,.15)}
 
 /* Tables */
 .tbl-wrap{overflow-x:auto;border:1px solid var(--neutral-1);border-radius:8px;background:#fff}
@@ -383,9 +383,9 @@ body.locked header, body.locked main, body.locked footer{display:none !important
       <label>Cuentas (Caja)<details class="multi" id="gc-cuenta"><summary>(Todas)</summary><div class="multi-body"></div></details></label>
       <div class="group">
         <button class="btn sec" id="gc-show-rec">Gastos Recurrentes</button>
-        <button class="btn sec" id="gc-clear-ing">Limpiar ingresos</button>
+        <button class="btn sec" id="gc-clear-ing">Limpiar estimados</button>
       </div>
-      <div class="small" style="margin-left:auto">FX USD/MXN: <span id="gc-fx-label">—</span>. Caja Final = Caja Inicial − Recurrentes + Ingresos Estimados.</div>
+      <div class="small" style="margin-left:auto">FX USD/MXN: <span id="gc-fx-label">—</span>. Caja Final = Caja Inicial − Recurrentes + Ingresos Estimados − Pago Impuestos Est.</div>
     </div>
     <div class="totals">
       <div class="stat"><div class="lbl">Caja Actual (MXN)</div><div class="val" id="gc-caja">—</div></div>
@@ -400,6 +400,7 @@ body.locked header, body.locked main, body.locked footer{display:none !important
           <th class="num">Caja Inicial</th>
           <th class="num">Gastos Recurrentes</th>
           <th class="num">Ingresos Estimados</th>
+          <th class="num">Pago Impuestos Est.</th>
           <th class="num">Flujo Neto</th>
           <th class="num">Caja Final</th>
         </tr></thead>
@@ -489,7 +490,6 @@ window.CONFIG = {
   fxUsdMxn: 20.00,
   coefUtilidad: 0.0844,
   isrRate: 0.30,
-  updatedAt: "2026-04-22",
   modules: ["registro","balance","impuestosMes","zoom","pendientes","gastosCaja"],
   semaforo: [{max:15,cls:"ok",lbl:"0–15"},{max:30,cls:"warn",lbl:"16–30"},{max:60,cls:"orange",lbl:"31–60"},{max:Infinity,cls:"err",lbl:"60+"}],
   avisoLegal: [
@@ -1065,7 +1065,7 @@ function bindPendientes(){
 }
 
 /* ======================= GASTOS RECURRENTES VS CAJA ====================== */
-const GC = {cuenta:new Set(), ingresos:{}, excluded:new Set(), _init:false};
+const GC = {cuenta:new Set(), ingresos:{}, pagosImpuestos:{}, excluded:new Set(), _init:false};
 // REC se puebla globalmente en initData() después del login; declarado arriba.
 
 function initGastosCaja(){
@@ -1131,17 +1131,20 @@ function renderGastosCaja(){
 
     const ingVal = GC.ingresos[m] || 0;
     const ingDisplay = ingVal>0 ? fmtMoney(ingVal) : "";
+    const impVal = GC.pagosImpuestos[m] || 0;
+    const impDisplay = impVal>0 ? fmtMoney(impVal) : "";
 
     rowsHTML.push(`<tr data-idx="${i}">
       <td>${MONTHS_ES_LONG[m]} ${year}${isCurrent?' <span class="badge b-info">Actual</span>':''}</td>
       <td class="num" data-cell="ini"></td>
       <td class="num" data-cell="rec">${recCell}</td>
       <td class="num"><input type="text" class="gc-ing-input" data-month="${m}" value="${ingDisplay}" placeholder="$0" inputmode="decimal"/></td>
+      <td class="num"><input type="text" class="gc-imp-input" data-month="${m}" value="${impDisplay}" placeholder="$0" inputmode="decimal"/></td>
       <td class="num" data-cell="flujo"></td>
       <td class="num" data-cell="final"></td>
     </tr>`);
   }
-  tbody.innerHTML = rowsHTML.join("") || `<tr><td colspan="6" class="small" style="text-align:center">No hay meses restantes en el año.</td></tr>`;
+  tbody.innerHTML = rowsHTML.join("") || `<tr><td colspan="7" class="small" style="text-align:center">No hay meses restantes en el año.</td></tr>`;
 
   // Initial cascade computes cell values
   updateGCCascade();
@@ -1188,6 +1191,28 @@ function renderGastosCaja(){
       inp.value = v>0 ? fmtMoney(v) : "";
     });
   });
+
+  // Pago Impuestos Est. text inputs: misma UX que ingresos, resta a caja final.
+  tbody.querySelectorAll(".gc-imp-input").forEach(inp=>{
+    inp.addEventListener("focus",()=>{
+      const m = parseInt(inp.dataset.month,10);
+      const v = GC.pagosImpuestos[m] || 0;
+      inp.value = v ? String(v) : "";
+      requestAnimationFrame(()=>inp.select());
+    });
+    inp.addEventListener("input",()=>{
+      const m = parseInt(inp.dataset.month,10);
+      const raw = inp.value.replace(/[^\d.-]/g,"");
+      const v = parseFloat(raw) || 0;
+      GC.pagosImpuestos[m] = Math.max(0, v);
+      updateGCCascade();
+    });
+    inp.addEventListener("blur",()=>{
+      const m = parseInt(inp.dataset.month,10);
+      const v = GC.pagosImpuestos[m] || 0;
+      inp.value = v>0 ? fmtMoney(v) : "";
+    });
+  });
 }
 
 function updateGCCascade(){
@@ -1200,7 +1225,8 @@ function updateGCCascade(){
     const isCurrent = i===0;
     const rec = recurrentesMes(isCurrent);
     const ing = GC.ingresos[m] || 0;
-    const flujoNeto = ing - rec;
+    const imp = GC.pagosImpuestos[m] || 0;
+    const flujoNeto = ing - rec - imp;
     const cajaFinal = cajaInicial + flujoNeto;
     const iniC = tr.querySelector('[data-cell="ini"]');
     const flujoC = tr.querySelector('[data-cell="flujo"]');
@@ -1234,8 +1260,9 @@ function renderGCRecOverlay(){
 function bindGastosCaja(){
   document.getElementById("gc-clear-ing").addEventListener("click",()=>{
     GC.ingresos = {};
+    GC.pagosImpuestos = {};
     renderGastosCaja();
-    toast("Ingresos estimados limpiados");
+    toast("Estimados limpiados");
   });
   const ov = document.getElementById("gc-rec-overlay");
   document.getElementById("gc-show-rec").addEventListener("click",()=>{
@@ -1273,7 +1300,7 @@ function refreshAll(){
 function boot(){
   document.getElementById("logo-img").src = window.LOGO || "";
   document.getElementById("logo-dark-img").src = window.LOGO_DARK || "";
-  document.getElementById("footer-date").textContent = fmtDateLong(CFG.updatedAt);
+  document.getElementById("footer-date").textContent = fmtDateLong(todayISO());
   document.getElementById("tab-bar").addEventListener("click",e=>{
     const b=e.target.closest("button[data-tab]"); if(!b)return;
     switchTab(b.dataset.tab);
