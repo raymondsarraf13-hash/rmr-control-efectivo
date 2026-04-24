@@ -1,0 +1,48 @@
+# ============================================================
+# Demo_RMR — Control de Efectivo
+# Solo `index.html` y este `.gitignore` deben subir al repo.
+# ============================================================
+
+# --- SECRETOS (NUNCA commit) ---
+.password.local
+.password.local.txt
+.env
+.env.*
+
+# --- Datos fuente (contienen info financiera sensible) ---
+*.xlsx
+*.xls
+*.xlsm
+~$*
+
+# --- Carpetas del proyecto (no se publican) ---
+Documentos de trabajo/
+Documentos HTML otros/
+Documentos MD/
+Documentos PY/
+Formatos RMR/
+
+# --- Archivos operativos locales ---
+Costos_Estimados.md
+Siguientes Pasos.txt
+
+# --- Agente / herramientas locales ---
+.claude/
+
+# --- Python ---
+__pycache__/
+*.pyc
+*.pyo
+.venv/
+venv/
+
+# --- Sistema operativo ---
+Thumbs.db
+Desktop.ini
+.DS_Store
+
+# --- Editores ---
+.vscode/
+.idea/
+*.swp
+*.swo
